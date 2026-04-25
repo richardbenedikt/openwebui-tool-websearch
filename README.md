@@ -14,6 +14,7 @@ A small, well-behaved [Open WebUI](https://github.com/open-webui/open-webui) too
 - **Native function calling** — the model decides whether and how often to call. Multiple, refining searches per inference are supported and explicitly encouraged in the docstrings.
 - **Reuses your OpenWebUI search backend** — no duplicate engine config, no extra keys.
 - **Domain allow/block lists** applied to both search results and `fetch_url` targets.
+- **Auto-fetch top N pages** in parallel after every search, so answers are based on real page bodies rather than short snippets — even if the model wouldn't have called `fetch_url` itself.
 - **Status events** for visible progress in the chat UI.
 - **Single-file deployment** — copy `websearch.py` into Workspace → Tools.
 
@@ -44,6 +45,7 @@ In Workspace → Tools → Import, paste the raw URL of `websearch.py` from your
 | `allow_domains` | csv string | `""` | If set, only results from these domains (or subdomains) survive the filter. Also enforced on `fetch_url`. |
 | `block_domains` | csv string | `""` | Drops results from these domains (or subdomains). Also enforced on `fetch_url`. |
 | `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. |
+| `auto_fetch_top` | int (0–10) | `2` | After every `web_search`, automatically fetch the top N pages in parallel and embed their text into the response. Bypasses unreliable model decisions to call `fetch_url`. Set equal to `result_count` for full coverage of every returned hit. `0` disables. |
 
 All values are configurable from **Workspace → Tools → Web Search → ⚙️**.
 
@@ -51,20 +53,22 @@ All values are configurable from **Workspace → Tools → Web Search → ⚙️
 
 The first sentence of each tool's docstring is what the LLM sees and gates on. They are deliberately blunt:
 
-- `web_search` — *"Search the web when the user's question requires current, recent, or post-training-cutoff information, or specific facts you do not reliably know. Call multiple times with refined queries if the first results are insufficient. Do not call for general knowledge, math, or topics fully covered by your training data."*
-- `fetch_url` — *"Fetch the full text of a specific URL when a snippet from web_search is not enough… Do not call without first having a URL from web_search results or directly from the user."*
+- `web_search` — *"Search the web when the user's question requires current, recent, or post-training-cutoff information… After results come back, call fetch_url on one or more of the most relevant links to read the full page before answering — snippets are short and frequently misleading…"*
+- `fetch_url` — *"Fetch the full text of a specific URL when web_search has returned candidate links. You should call this on at least one — usually two or three — of the top results before answering any non-trivial question…"*
 
-This means: trivia, math, and well-known facts won't trigger a search; questions about current events or post-cutoff topics will, and the model is free to refine and re-query.
+This means: trivia, math, and well-known facts won't trigger a search; questions about current events or post-cutoff topics will trigger a search **and** typically one or more `fetch_url` calls. The search response also embeds a short `hint` field reminding the model to read pages before answering.
 
 ### Return shape
 
 Both methods return a JSON-encoded string with a stable shape:
 
 ```json
-{"results": [{"title": "...", "link": "...", "snippet": "..."}]}
+{"results": [{"title": "...", "link": "...", "snippet": "...", "content": "full page text"}], "hint": "..."}
 {"url": "https://...", "content": "page text"}
 {"error": "human-readable reason"}
 ```
+
+`content` is present on the top `auto_fetch_top` results when `enable_fetch_url` is on (default `auto_fetch_top=2`). On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is omitted when there are no results or when `enable_fetch_url` is off.
 
 ## Development
 

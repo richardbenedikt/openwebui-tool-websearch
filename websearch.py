@@ -12,6 +12,7 @@ license: MIT
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Iterable
 from importlib import import_module
@@ -153,6 +154,18 @@ class Tools:
             default=True,
             description="Master switch for the fetch_url method.",
         )
+        auto_fetch_top: int = Field(
+            default=2,
+            ge=0,
+            le=10,
+            description=(
+                "After web_search, automatically fetch the top N pages in parallel "
+                "and embed their text into the response. Bypasses the model's "
+                "(often unreliable) decision to call fetch_url itself. Set equal to "
+                "result_count for full coverage of every returned hit. 0 disables. "
+                "Requires enable_fetch_url."
+            ),
+        )
 
     def __init__(self) -> None:
         self.valves = self.Valves()
@@ -163,18 +176,22 @@ class Tools:
         count: int = 0,
         __request__: Any = None,
         __user__: dict[str, Any] | None = None,
-        __event_emitter__: EmitFn | None = None
+        __event_emitter__: EmitFn | None = None,
     ) -> str:
         """
         Search the web when the user's question requires current, recent,
         or post-training-cutoff information, or specific facts you do not
         reliably know. Call multiple times with refined queries if the first
-        results are insufficient. Do not call for general knowledge, math,
-        or topics fully covered by your training data.
+        results are insufficient. After results come back, call fetch_url
+        on one or more of the most relevant links to read the full page
+        before answering — snippets are short and frequently misleading,
+        especially for lists, comparisons, dates, prices, or specifications.
+        Do not call for general knowledge, math, or topics fully covered
+        by your training data.
 
         :param query: A focused search query in natural language.
         :param count: Optional override for number of results (1-20). 0 uses the configured default.
-        :return: JSON string {"results": [{"title", "link", "snippet"}, ...]} or {"error": "..."}.
+        :return: JSON string {"results": [...], "hint": "..."} or {"error": "..."}.
         """
         cleaned_query = (query or "").strip()
         if not cleaned_query:
@@ -214,25 +231,83 @@ class Tools:
         )
         results = results[:effective_count]
 
+        fetched_count = 0
+        if results and self.valves.enable_fetch_url and self.valves.auto_fetch_top > 0:
+            fetched_count = await self._auto_fetch(
+                results, __request__=__request__, __user__=__user__, emitter=__event_emitter__
+            )
+
         await _emit(
             __event_emitter__,
-            f"Found {len(results)} result(s) for: {cleaned_query}",
+            f"Found {len(results)} result(s) for: {cleaned_query}"
+            + (f" ({fetched_count} pre-fetched)" if fetched_count else ""),
             done=True,
             status="success" if results else "warning",
         )
-        return json.dumps({"results": results})
+        payload: dict[str, Any] = {"results": results}
+        if results and self.valves.enable_fetch_url:
+            if fetched_count:
+                payload["hint"] = (
+                    f"The top {fetched_count} page(s) have already been fetched and are "
+                    "included as 'content' on each result. Read those bodies directly to "
+                    "answer; you do not need to call fetch_url for them. Call fetch_url "
+                    "only for additional links that were not pre-fetched."
+                )
+            else:
+                payload["hint"] = (
+                    "These are short snippets. For any non-trivial question — lists, "
+                    "comparisons, dates, prices, specs, multi-step instructions — call "
+                    "fetch_url on the most relevant link(s) before answering. Do not "
+                    "rely on snippets alone."
+                )
+        return json.dumps(payload)
+
+    async def _auto_fetch(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        __request__: Any,
+        __user__: dict[str, Any] | None,
+        emitter: EmitFn | None,
+    ) -> int:
+        try:
+            _, fetch_url = _resolve_builtins()
+        except RuntimeError:
+            return 0
+
+        top = results[: self.valves.auto_fetch_top]
+        if not top:
+            return 0
+
+        await _emit(emitter, f"Pre-fetching top {len(top)} page(s)...")
+
+        async def _one(entry: dict[str, Any]) -> None:
+            link = str(entry.get("link", ""))
+            if not link:
+                return
+            try:
+                content = await fetch_url(url=link, __request__=__request__, __user__=__user__)
+                entry["content"] = content if isinstance(content, str) else ""
+            except Exception as exc:
+                entry["fetch_error"] = str(exc)
+
+        await asyncio.gather(*(_one(entry) for entry in top), return_exceptions=False)
+        return sum(1 for entry in top if "content" in entry)
 
     async def fetch_url(
         self,
         url: str,
         __request__: Any = None,
         __user__: dict[str, Any] | None = None,
-        __event_emitter__: EmitFn | None = None
+        __event_emitter__: EmitFn | None = None,
     ) -> str:
         """
-        Fetch the full text of a specific URL when a snippet from web_search
-        is not enough to answer the user. Do not call without first having a
-        URL from web_search results or directly from the user.
+        Fetch the full text of a specific URL when web_search has returned
+        candidate links. You should call this on at least one — usually two
+        or three — of the top results before answering any non-trivial
+        question. Snippets from search are short and often misleading;
+        the page body is the source of truth. Do not call without first
+        having a URL from web_search results or directly from the user.
 
         :param url: The absolute http(s) URL to fetch.
         :return: JSON string {"url": "...", "content": "..."} or {"error": "..."}.

@@ -34,9 +34,97 @@ async def test_web_search_returns_json_results(patch_builtins, fake_request, fak
     assert "results" in payload
     assert len(payload["results"]) == 2
     assert payload["results"][0]["link"] == "https://example.com/1"
+    assert "fetch_url" in payload["hint"]
     assert search_calls and search_calls[0]["query"] == "openwebui"
     assert search_calls[0]["count"] == tool.valves.result_count
     assert any(e["data"]["done"] for e in emitted)
+
+
+async def test_web_search_omits_hint_when_no_results(patch_builtins, fake_request, fake_user) -> None:
+    patch_builtins(search_result=[])
+    tool = _make_tool()
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert payload["results"] == []
+    assert "hint" not in payload
+
+
+async def test_web_search_omits_hint_when_fetch_url_disabled(patch_builtins, fake_request, fake_user) -> None:
+    patch_builtins(search_result=[{"title": "T", "link": "https://x/1", "snippet": "s"}])
+    tool = _make_tool(enable_fetch_url=False)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert payload["results"]
+    assert "hint" not in payload
+
+
+async def test_web_search_auto_fetch_top_embeds_content(patch_builtins, fake_request, fake_user) -> None:
+    _, fetch_calls = patch_builtins(
+        search_result=[
+            {"title": "A", "link": "https://a.test/1", "snippet": "sa"},
+            {"title": "B", "link": "https://b.test/2", "snippet": "sb"},
+            {"title": "C", "link": "https://c.test/3", "snippet": "sc"},
+        ],
+        fetch_result="full page body",
+    )
+    tool = _make_tool(auto_fetch_top=2)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert payload["results"][0]["content"] == "full page body"
+    assert payload["results"][1]["content"] == "full page body"
+    assert "content" not in payload["results"][2]
+    assert len(fetch_calls) == 2
+    assert "pre-fetched" in payload["hint"] or "fetched" in payload["hint"]
+
+
+async def test_web_search_auto_fetch_top_zero_keeps_snippet_behavior(patch_builtins, fake_request, fake_user) -> None:
+    _, fetch_calls = patch_builtins(
+        search_result=[{"title": "A", "link": "https://a.test/1", "snippet": "sa"}],
+        fetch_result="should not be called",
+    )
+    tool = _make_tool(auto_fetch_top=0)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert "content" not in payload["results"][0]
+    assert fetch_calls == []
+    assert "fetch_url" in payload["hint"]
+
+
+async def test_web_search_auto_fetch_top_inactive_when_fetch_url_disabled(
+    patch_builtins, fake_request, fake_user
+) -> None:
+    _, fetch_calls = patch_builtins(
+        search_result=[{"title": "A", "link": "https://a.test/1", "snippet": "sa"}],
+        fetch_result="x",
+    )
+    tool = _make_tool(auto_fetch_top=3, enable_fetch_url=False)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert "content" not in payload["results"][0]
+    assert fetch_calls == []
+    assert "hint" not in payload
+
+
+async def test_web_search_auto_fetch_records_errors(patch_builtins, fake_request, fake_user) -> None:
+    patch_builtins(
+        search_result=[{"title": "A", "link": "https://a.test/1", "snippet": "sa"}],
+        fetch_result=RuntimeError("boom"),
+    )
+    tool = _make_tool(auto_fetch_top=1)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert payload["results"][0].get("fetch_error") == "boom"
+    assert "content" not in payload["results"][0]
+
+
+async def test_web_search_auto_fetch_caps_at_results_length(patch_builtins, fake_request, fake_user) -> None:
+    _, fetch_calls = patch_builtins(
+        search_result=[{"title": "A", "link": "https://a.test/1", "snippet": "sa"}],
+        fetch_result="ok",
+    )
+    tool = _make_tool(auto_fetch_top=5)
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    assert len(fetch_calls) == 1
 
 
 async def test_web_search_count_override_clamps(patch_builtins, fake_request, fake_user) -> None:
@@ -162,7 +250,7 @@ def test_web_search_docstring_starts_with_when_to_call() -> None:
 
 def test_fetch_url_docstring_starts_with_when_to_call() -> None:
     doc = (Tools.fetch_url.__doc__ or "").strip()
-    assert doc.startswith("Fetch the full text of a specific URL when")
+    assert doc.startswith("Fetch the full text of a specific URL")
 
 
 def test_citation_is_class_attribute() -> None:
