@@ -4,9 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
-A small, well-behaved [Open WebUI](https://github.com/open-webui/open-webui) tool that lets the model search the web and fetch pages **only when it actually needs to**. It is a thin adapter over OpenWebUI's built-in `search_web` / `fetch_url`, so it inherits whatever search engine you have already configured (DuckDuckGo, Brave, Google PSE, Tavily, …) — no extra API keys required.
-
-> _Screenshot/GIF placeholder — drop a recording of the tool firing in a chat here once published._
+A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets the model search the web and fetch pages **only when it actually needs to**. It is a thin adapter over OpenWebUI's built-in `search_web` / `fetch_url`, so it inherits whatever search engine you have already configured (DuckDuckGo, Brave, Google PSE, Tavily, …) — no extra API keys required.
 
 ## Features
 
