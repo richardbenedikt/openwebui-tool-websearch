@@ -2,7 +2,7 @@
 title: Web Search
 author: Richard Braun
 author_url: https://github.com/richardbenedikt
-git_url: https://github.com/richardbenedikt/openwebui-websearch-tool
+git_url: https://github.com/richardbenedikt/openwebui-tool-websearch
 description: Search the web and fetch pages on demand, via OpenWebUI's configured backend.
 required_open_webui_version: 0.6.0
 requirements: pydantic>=2

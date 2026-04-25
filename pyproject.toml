@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openwebui-websearch-tool"
+name = "openwebui-tool-websearch"
 version = "1.1.0"
 description = "OpenWebUI tool that exposes web_search and fetch_url to the model, reusing OpenWebUI's configured search backend."
 readme = "README.md"
@@ -35,9 +35,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/richardbenedikt/openwebui-websearch-tool"
-Issues = "https://github.com/richardbenedikt/openwebui-websearch-tool/issues"
-Source = "https://github.com/richardbenedikt/openwebui-websearch-tool"
+Homepage = "https://github.com/richardbenedikt/openwebui-tool-websearch"
+Issues = "https://github.com/richardbenedikt/openwebui-tool-websearch/issues"
+Source = "https://github.com/richardbenedikt/openwebui-tool-websearch"
 
 [tool.setuptools]
 py-modules = ["websearch"]
