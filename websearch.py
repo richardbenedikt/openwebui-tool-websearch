@@ -6,7 +6,7 @@ git_url: https://github.com/richardbenedikt/openwebui-websearch-tool
 description: Search the web and fetch pages on demand, via OpenWebUI's configured backend.
 required_open_webui_version: 0.6.0
 requirements: pydantic>=2
-version: 0.1.0
+version: 1.1.0
 license: MIT
 """
 
