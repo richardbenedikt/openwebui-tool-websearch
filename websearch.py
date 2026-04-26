@@ -6,7 +6,7 @@ git_url: https://github.com/richardbenedikt/openwebui-tool-websearch
 description: Search the web and fetch pages on demand, via OpenWebUI's configured backend.
 required_open_webui_version: 0.6.0
 requirements: pydantic>=2
-version: 1.1.0
+version: 2.0.0
 license: MIT
 """
 
@@ -154,16 +154,24 @@ class Tools:
             default=True,
             description="Master switch for the fetch_url method.",
         )
-        auto_fetch_top: int = Field(
-            default=2,
-            ge=0,
-            le=10,
+        auto_fetch_enabled: bool = Field(
+            default=True,
             description=(
-                "After web_search, automatically fetch the top N pages in parallel "
-                "and embed their text into the response. Bypasses the model's "
-                "(often unreliable) decision to call fetch_url itself. Set equal to "
-                "result_count for full coverage of every returned hit. 0 disables. "
-                "Requires enable_fetch_url."
+                "Master switch for the post-search auto-fetch step. When false, "
+                "web_search returns snippets only, but the model can still call "
+                "fetch_url itself (unlike enable_fetch_url, which disables fetch_url "
+                "entirely)."
+            ),
+        )
+        auto_fetch_top: int = Field(
+            default=0,
+            ge=0,
+            le=20,
+            description=(
+                "When auto_fetch_enabled is true, controls how many pages are "
+                "pre-fetched per search. 0 (default) fetches every returned result; "
+                "a positive N fetches only the top N (capped at the number of "
+                "returned results)."
             ),
         )
 
@@ -232,7 +240,7 @@ class Tools:
         results = results[:effective_count]
 
         fetched_count = 0
-        if results and self.valves.enable_fetch_url and self.valves.auto_fetch_top > 0:
+        if results and self.valves.enable_fetch_url and self.valves.auto_fetch_enabled:
             fetched_count = await self._auto_fetch(
                 results, __request__=__request__, __user__=__user__, emitter=__event_emitter__
             )
@@ -275,7 +283,8 @@ class Tools:
         except RuntimeError:
             return 0
 
-        top = results[: self.valves.auto_fetch_top]
+        limit = self.valves.auto_fetch_top
+        top = results if limit == 0 else results[:limit]
         if not top:
             return 0
 

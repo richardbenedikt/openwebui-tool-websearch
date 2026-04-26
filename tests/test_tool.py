@@ -77,17 +77,43 @@ async def test_web_search_auto_fetch_top_embeds_content(patch_builtins, fake_req
     assert "pre-fetched" in payload["hint"] or "fetched" in payload["hint"]
 
 
-async def test_web_search_auto_fetch_top_zero_keeps_snippet_behavior(patch_builtins, fake_request, fake_user) -> None:
+async def test_web_search_auto_fetch_top_zero_fetches_all(patch_builtins, fake_request, fake_user) -> None:
+    _, fetch_calls = patch_builtins(
+        search_result=[
+            {"title": "A", "link": "https://a.test/1", "snippet": "sa"},
+            {"title": "B", "link": "https://b.test/2", "snippet": "sb"},
+            {"title": "C", "link": "https://c.test/3", "snippet": "sc"},
+        ],
+        fetch_result="full page body",
+    )
+    tool = _make_tool(auto_fetch_top=0)
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert all(r["content"] == "full page body" for r in payload["results"])
+    assert len(fetch_calls) == 3
+    assert "pre-fetched" in payload["hint"] or "already been fetched" in payload["hint"]
+
+
+async def test_web_search_auto_fetch_disabled_skips_prefetch(patch_builtins, fake_request, fake_user) -> None:
     _, fetch_calls = patch_builtins(
         search_result=[{"title": "A", "link": "https://a.test/1", "snippet": "sa"}],
         fetch_result="should not be called",
     )
-    tool = _make_tool(auto_fetch_top=0)
+    tool = _make_tool(auto_fetch_enabled=False)
     out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
     payload = json.loads(out)
     assert "content" not in payload["results"][0]
     assert fetch_calls == []
     assert "fetch_url" in payload["hint"]
+
+
+async def test_fetch_url_still_works_when_auto_fetch_disabled(patch_builtins, fake_request, fake_user) -> None:
+    _, fetch_calls = patch_builtins(fetch_result="hello")
+    tool = _make_tool(auto_fetch_enabled=False)
+    out = await tool.fetch_url("https://example.com/x", __request__=fake_request, __user__=fake_user)
+    payload = json.loads(out)
+    assert payload["content"] == "hello"
+    assert len(fetch_calls) == 1
 
 
 async def test_web_search_auto_fetch_top_inactive_when_fetch_url_disabled(

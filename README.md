@@ -12,7 +12,7 @@ A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets th
 - **Native function calling** — the model decides whether and how often to call. Multiple, refining searches per inference are supported and explicitly encouraged in the docstrings.
 - **Reuses your OpenWebUI search backend** — no duplicate engine config, no extra keys.
 - **Domain allow/block lists** applied to both search results and `fetch_url` targets.
-- **Auto-fetch top N pages** in parallel after every search, so answers are based on real page bodies rather than short snippets — even if the model wouldn't have called `fetch_url` itself.
+- **Auto-fetches every result page by default** in parallel after every search, so answers are based on real page bodies rather than short snippets — even if the model wouldn't have called `fetch_url` itself. Configurable to a top-N cap.
 - **Status events** for visible progress in the chat UI.
 - **Single-file deployment** — copy `websearch.py` into Workspace → Tools.
 
@@ -42,8 +42,9 @@ In Workspace → Tools → Import, paste the raw URL of `websearch.py` from your
 | `result_count` | int (1–20) | `5` | Default number of results returned. The model may override per call (clamped to 1–20). |
 | `allow_domains` | csv string | `""` | If set, only results from these domains (or subdomains) survive the filter. Also enforced on `fetch_url`. |
 | `block_domains` | csv string | `""` | Drops results from these domains (or subdomains). Also enforced on `fetch_url`. |
-| `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. |
-| `auto_fetch_top` | int (0–10) | `2` | After every `web_search`, automatically fetch the top N pages in parallel and embed their text into the response. Bypasses unreliable model decisions to call `fetch_url`. Set equal to `result_count` for full coverage of every returned hit. `0` disables. |
+| `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. Disabling also disables auto-fetch. |
+| `auto_fetch_enabled` | bool | `true` | Master switch for the post-search auto-fetch step. When `false`, `web_search` returns snippets only, but the model can still call `fetch_url` itself. |
+| `auto_fetch_top` | int (0–20) | `0` | When `auto_fetch_enabled` is on, controls how many pages are pre-fetched per search. `0` (default) fetches every returned result; a positive `N` caps pre-fetching to the top `N` (capped at the number of returned results). |
 
 All values are configurable from **Workspace → Tools → Web Search → ⚙️**.
 
@@ -66,7 +67,7 @@ Both methods return a JSON-encoded string with a stable shape:
 {"error": "human-readable reason"}
 ```
 
-`content` is present on the top `auto_fetch_top` results when `enable_fetch_url` is on (default `auto_fetch_top=2`). On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is omitted when there are no results or when `enable_fetch_url` is off.
+`content` is present on every returned result by default (`auto_fetch_top=0`) when both `enable_fetch_url` and `auto_fetch_enabled` are on; set a positive `N` to cap pre-fetching to the top `N`, or set `auto_fetch_enabled=false` to skip pre-fetching entirely while keeping `fetch_url` available to the model. On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is omitted when there are no results or when `enable_fetch_url` is off.
 
 ## Development
 
