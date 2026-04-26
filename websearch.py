@@ -6,7 +6,7 @@ git_url: https://github.com/richardbenedikt/openwebui-tool-websearch
 description: Search the web and fetch pages on demand, via OpenWebUI's configured backend.
 required_open_webui_version: 0.6.0
 requirements: pydantic>=2
-version: 2.0.0
+version: 2.2.0
 license: MIT
 """
 
@@ -81,6 +81,32 @@ def _filter_results(results: list[dict[str, Any]], allow: list[str], block: list
     return filtered
 
 
+def _looks_empty(raw: Any) -> bool:
+    """True if `raw` plausibly represents an empty result set in a recognized shape.
+
+    Used to distinguish a backend that genuinely returned nothing from one whose
+    response shape we failed to parse — the latter deserves a diagnostic warning,
+    the former does not.
+    """
+    if raw is None:
+        return True
+    if isinstance(raw, str):
+        if not raw.strip():
+            return True
+        try:
+            return _looks_empty(json.loads(raw))
+        except json.JSONDecodeError:
+            return False
+    if isinstance(raw, list):
+        return len(raw) == 0
+    if isinstance(raw, dict):
+        if not raw:
+            return True
+        results = raw.get("results")
+        return isinstance(results, list) and len(results) == 0
+    return False
+
+
 def _normalize(raw: Any) -> list[dict[str, Any]]:
     if raw is None:
         return []
@@ -119,6 +145,21 @@ async def _emit(emitter: EmitFn | None, description: str, *, done: bool = False,
         {
             "type": "status",
             "data": {"status": status, "description": description, "done": done},
+        }
+    )
+
+
+async def _emit_citation(emitter: EmitFn | None, *, url: str, title: str, content: str) -> None:
+    if emitter is None or not content:
+        return
+    await emitter(
+        {
+            "type": "citation",
+            "data": {
+                "document": [content],
+                "metadata": [{"source": url}],
+                "source": {"name": title or url, "url": url},
+            },
         }
     )
 
@@ -190,12 +231,15 @@ class Tools:
         Search the web when the user's question requires current, recent,
         or post-training-cutoff information, or specific facts you do not
         reliably know. Call multiple times with refined queries if the first
-        results are insufficient. After results come back, call fetch_url
-        on one or more of the most relevant links to read the full page
-        before answering — snippets are short and frequently misleading,
-        especially for lists, comparisons, dates, prices, or specifications.
-        Do not call for general knowledge, math, or topics fully covered
-        by your training data.
+        results are insufficient. If a call returns no results, retry with a
+        broader query (drop the year, drop adjectives, keep 2-4 core terms)
+        before declining to answer — search engines frequently miss long,
+        over-specified phrases. After results come back, call fetch_url on
+        one or more of the most relevant links to read the full page before
+        answering — snippets are short and frequently misleading, especially
+        for lists, comparisons, dates, prices, or specifications. Do not
+        call for general knowledge, math, or topics fully covered by your
+        training data.
 
         :param query: A focused search query in natural language.
         :param count: Optional override for number of results (1-20). 0 uses the configured default.
@@ -232,6 +276,12 @@ class Tools:
             return _error(message)
 
         results = _normalize(raw)
+        if not results and not _looks_empty(raw):
+            await _emit(
+                __event_emitter__,
+                "Search backend returned an unrecognized response shape; treating as empty.",
+                status="warning",
+            )
         results = _filter_results(
             results,
             allow=_split_csv(self.valves.allow_domains),
@@ -253,7 +303,14 @@ class Tools:
             status="success" if results else "warning",
         )
         payload: dict[str, Any] = {"results": results}
-        if results and self.valves.enable_fetch_url:
+        if not results:
+            payload["hint"] = (
+                "No results returned. The search engine often misses long, "
+                "over-specified queries. Call web_search again with a shorter, "
+                "broader query — drop the year, drop adjectives, keep 2-4 core "
+                "terms — before telling the user you don't know."
+            )
+        elif self.valves.enable_fetch_url:
             if fetched_count:
                 payload["hint"] = (
                     f"The top {fetched_count} page(s) have already been fetched and are "
@@ -296,7 +353,9 @@ class Tools:
                 return
             try:
                 content = await fetch_url(url=link, __request__=__request__, __user__=__user__)
-                entry["content"] = content if isinstance(content, str) else ""
+                text = content if isinstance(content, str) else ""
+                entry["content"] = text
+                await _emit_citation(emitter, url=link, title=str(entry.get("title") or ""), content=text)
             except Exception as exc:
                 entry["fetch_error"] = str(exc)
 
@@ -363,6 +422,7 @@ class Tools:
             return _error(message)
 
         text = content if isinstance(content, str) else ""
+        await _emit_citation(__event_emitter__, url=cleaned_url, title=cleaned_url, content=text)
         await _emit(
             __event_emitter__,
             f"Fetched {len(text)} character(s) from {host}",

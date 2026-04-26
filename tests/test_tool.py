@@ -37,16 +37,33 @@ async def test_web_search_returns_json_results(patch_builtins, fake_request, fak
     assert "fetch_url" in payload["hint"]
     assert search_calls and search_calls[0]["query"] == "openwebui"
     assert search_calls[0]["count"] == tool.valves.result_count
-    assert any(e["data"]["done"] for e in emitted)
+    assert any(e["data"].get("done") for e in emitted if e.get("type") == "status")
 
 
-async def test_web_search_omits_hint_when_no_results(patch_builtins, fake_request, fake_user) -> None:
+async def test_web_search_warns_on_unrecognized_response_shape(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    patch_builtins(search_result={"data": [{"title": "x", "link": "https://x/1"}]})
+    tool = _make_tool()
+    out = await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    payload = json.loads(out)
+    assert payload["results"] == []
+    statuses = [e for e in emitted if e.get("type") == "status"]
+    assert any(
+        e["data"].get("status") == "warning" and "unrecognized" in e["data"].get("description", "").lower()
+        for e in statuses
+    )
+
+
+async def test_web_search_emits_retry_hint_when_no_results(patch_builtins, fake_request, fake_user) -> None:
     patch_builtins(search_result=[])
     tool = _make_tool()
     out = await tool.web_search("q", __request__=fake_request, __user__=fake_user)
     payload = json.loads(out)
     assert payload["results"] == []
-    assert "hint" not in payload
+    hint = payload["hint"].lower()
+    assert "broader" in hint or "shorter" in hint
+    assert "web_search" in hint
 
 
 async def test_web_search_omits_hint_when_fetch_url_disabled(patch_builtins, fake_request, fake_user) -> None:
@@ -129,6 +146,55 @@ async def test_web_search_auto_fetch_top_inactive_when_fetch_url_disabled(
     assert "content" not in payload["results"][0]
     assert fetch_calls == []
     assert "hint" not in payload
+
+
+async def test_web_search_auto_fetch_emits_citation_per_page(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    patch_builtins(
+        search_result=[
+            {"title": "T1", "link": "https://a.test/1", "snippet": "s1"},
+            {"title": "T2", "link": "https://b.test/2", "snippet": "s2"},
+        ],
+        fetch_result="body",
+    )
+    tool = _make_tool()
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    citations = [e for e in emitted if e.get("type") == "citation"]
+    assert len(citations) == 2
+    urls = {c["data"]["source"]["url"] for c in citations}
+    assert urls == {"https://a.test/1", "https://b.test/2"}
+    assert all(c["data"]["document"] == ["body"] for c in citations)
+    names = {c["data"]["source"]["name"] for c in citations}
+    assert names == {"T1", "T2"}
+
+
+async def test_web_search_auto_fetch_skips_citation_on_empty_body(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    patch_builtins(
+        search_result=[{"title": "T", "link": "https://a.test/1", "snippet": "s"}],
+        fetch_result="",
+    )
+    tool = _make_tool()
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    citations = [e for e in emitted if e.get("type") == "citation"]
+    assert citations == []
+
+
+async def test_fetch_url_emits_citation(patch_builtins, fake_request, fake_user, emitter, emitted) -> None:
+    patch_builtins(fetch_result="hello")
+    tool = _make_tool()
+    await tool.fetch_url(
+        "https://example.com/x",
+        __request__=fake_request,
+        __user__=fake_user,
+        __event_emitter__=emitter,
+    )
+    citations = [e for e in emitted if e.get("type") == "citation"]
+    assert len(citations) == 1
+    assert citations[0]["data"]["source"]["url"] == "https://example.com/x"
+    assert citations[0]["data"]["document"] == ["hello"]
 
 
 async def test_web_search_auto_fetch_records_errors(patch_builtins, fake_request, fake_user) -> None:

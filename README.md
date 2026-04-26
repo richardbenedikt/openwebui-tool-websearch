@@ -14,6 +14,7 @@ A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets th
 - **Domain allow/block lists** applied to both search results and `fetch_url` targets.
 - **Auto-fetches every result page by default** in parallel after every search, so answers are based on real page bodies rather than short snippets — even if the model wouldn't have called `fetch_url` itself. Configurable to a top-N cap.
 - **Status events** for visible progress in the chat UI.
+- **Per-URL citations** — every fetched page is emitted as its own clickable source in the chat, not a single generic tool entry.
 - **Single-file deployment** — copy `websearch.py` into Workspace → Tools.
 
 ## Requirements
@@ -67,7 +68,7 @@ Both methods return a JSON-encoded string with a stable shape:
 {"error": "human-readable reason"}
 ```
 
-`content` is present on every returned result by default (`auto_fetch_top=0`) when both `enable_fetch_url` and `auto_fetch_enabled` are on; set a positive `N` to cap pre-fetching to the top `N`, or set `auto_fetch_enabled=false` to skip pre-fetching entirely while keeping `fetch_url` available to the model. On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is omitted when there are no results or when `enable_fetch_url` is off.
+`content` is present on every returned result by default (`auto_fetch_top=0`) when both `enable_fetch_url` and `auto_fetch_enabled` are on; set a positive `N` to cap pre-fetching to the top `N`, or set `auto_fetch_enabled=false` to skip pre-fetching entirely while keeping `fetch_url` available to the model. On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is always present on empty results (instructs the model to retry with a broader query) and on results when `enable_fetch_url` is on; it is omitted only on results when `enable_fetch_url` is off.
 
 ## Development
 

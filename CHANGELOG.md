@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-26
+### Added
+- `web_search` now returns a retry hint on empty results, instructing the model to broaden/simplify the query before declining to answer. Closes the failure mode where the model interpreted "0 results" as "I cannot search" and gave up.
+- Diagnostic warning event when the search backend returns an unrecognized response shape (previously silently coerced to `[]`).
+### Changed
+- `web_search` docstring strengthened with explicit guidance on retrying after empty results.
+
+## [2.1.0] - 2026-04-26
+### Added
+- Per-URL citation events for every page that gets fetched (both via auto-fetch and explicit `fetch_url`). Open WebUI now displays each fetched page as its own clickable source in the chat instead of a single generic `websearch/web_search` entry.
+
 ## [2.0.0] - 2026-04-26
 ### Added
 - `auto_fetch_enabled` valve (default `true`). Dedicated master switch for the post-search auto-fetch step; when `false`, `web_search` returns snippets only but the model can still call `fetch_url` itself.
