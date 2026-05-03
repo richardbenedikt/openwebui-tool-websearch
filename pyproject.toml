@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openwebui-tool-websearch"
-version = "2.2.0"
+version = "2.3.0"
 description = "OpenWebUI tool that exposes web_search and fetch_url to the model, reusing OpenWebUI's configured search backend."
 readme = "README.md"
 requires-python = ">=3.11"

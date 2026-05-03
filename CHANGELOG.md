@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-05-03
+### Added
+- `debug_log_raw_on_parse_failure` valve (default `false`). When the search backend returns an unrecognized response shape, also emits a status event with a truncated repr (≤1000 chars) of the raw payload. Use this to diagnose parse failures from DuckDuckGo or other backends whose response shape `_normalize` does not recognize.
+
 ## [2.2.0] - 2026-04-26
 ### Added
 - `web_search` now returns a retry hint on empty results, instructing the model to broaden/simplify the query before declining to answer. Closes the failure mode where the model interpreted "0 results" as "I cannot search" and gave up.

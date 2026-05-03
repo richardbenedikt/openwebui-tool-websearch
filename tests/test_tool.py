@@ -53,6 +53,46 @@ async def test_web_search_warns_on_unrecognized_response_shape(
         e["data"].get("status") == "warning" and "unrecognized" in e["data"].get("description", "").lower()
         for e in statuses
     )
+    assert not any("raw backend response" in e["data"].get("description", "").lower() for e in statuses)
+
+
+async def test_web_search_debug_emits_raw_payload_when_valve_on(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    patch_builtins(search_result={"data": [{"title": "x", "link": "https://x/1"}]})
+    tool = _make_tool(debug_log_raw_on_parse_failure=True)
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    statuses = [e for e in emitted if e.get("type") == "status"]
+    raw_emits = [e for e in statuses if "raw backend response" in e["data"].get("description", "").lower()]
+    assert len(raw_emits) == 1
+    desc = raw_emits[0]["data"]["description"]
+    assert '"data"' in desc and "https://x/1" in desc
+
+
+async def test_web_search_debug_truncates_long_raw_payload(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    big = {"unknown_envelope": "x" * 5000}
+    patch_builtins(search_result=big)
+    tool = _make_tool(debug_log_raw_on_parse_failure=True)
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    statuses = [e for e in emitted if e.get("type") == "status"]
+    raw_emits = [e for e in statuses if "raw backend response" in e["data"].get("description", "").lower()]
+    assert len(raw_emits) == 1
+    desc = raw_emits[0]["data"]["description"]
+    assert "truncated" in desc
+    assert len(desc) < 1500
+
+
+async def test_web_search_debug_silent_when_shape_is_recognized_empty(
+    patch_builtins, fake_request, fake_user, emitter, emitted
+) -> None:
+    patch_builtins(search_result={"results": []})
+    tool = _make_tool(debug_log_raw_on_parse_failure=True)
+    await tool.web_search("q", __request__=fake_request, __user__=fake_user, __event_emitter__=emitter)
+    statuses = [e for e in emitted if e.get("type") == "status"]
+    assert not any("raw backend response" in e["data"].get("description", "").lower() for e in statuses)
+    assert not any("unrecognized" in e["data"].get("description", "").lower() for e in statuses)
 
 
 async def test_web_search_emits_retry_hint_when_no_results(patch_builtins, fake_request, fake_user) -> None:

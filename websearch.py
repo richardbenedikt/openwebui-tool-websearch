@@ -6,7 +6,7 @@ git_url: https://github.com/richardbenedikt/openwebui-tool-websearch
 description: Search the web and fetch pages on demand, via OpenWebUI's configured backend.
 required_open_webui_version: 0.6.0
 requirements: pydantic>=2
-version: 2.2.0
+version: 2.3.0
 license: MIT
 """
 
@@ -215,6 +215,15 @@ class Tools:
                 "returned results)."
             ),
         )
+        debug_log_raw_on_parse_failure: bool = Field(
+            default=False,
+            description=(
+                "When the search backend returns a response shape that cannot "
+                "be parsed, also emit a truncated repr of the raw payload as a "
+                "status event. Use this to diagnose unrecognized DuckDuckGo / "
+                "backend response shapes. Off by default."
+            ),
+        )
 
     def __init__(self) -> None:
         self.valves = self.Valves()
@@ -282,6 +291,15 @@ class Tools:
                 "Search backend returned an unrecognized response shape; treating as empty.",
                 status="warning",
             )
+            if self.valves.debug_log_raw_on_parse_failure:
+                preview = repr(raw)
+                if len(preview) > 1000:
+                    preview = preview[:1000] + f"... [truncated, total {len(repr(raw))} chars]"
+                await _emit(
+                    __event_emitter__,
+                    f"Raw backend response: {preview}",
+                    status="warning",
+                )
         results = _filter_results(
             results,
             allow=_split_csv(self.valves.allow_domains),
