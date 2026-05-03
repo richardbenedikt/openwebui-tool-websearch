@@ -46,6 +46,7 @@ In Workspace → Tools → Import, paste the raw URL of `websearch.py` from your
 | `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. Disabling also disables auto-fetch. |
 | `auto_fetch_enabled` | bool | `true` | Master switch for the post-search auto-fetch step. When `false`, `web_search` returns snippets only, but the model can still call `fetch_url` itself. |
 | `auto_fetch_top` | int (0–20) | `0` | When `auto_fetch_enabled` is on, controls how many pages are pre-fetched per search. `0` (default) fetches every returned result; a positive `N` caps pre-fetching to the top `N` (capped at the number of returned results). |
+| `debug_log_raw_on_parse_failure` | bool | `false` | When the search backend returns a response shape the tool cannot parse, also emits a status event with a truncated repr (≤1000 chars) of the raw payload. Use this to diagnose unrecognized DuckDuckGo / backend response shapes. |
 
 All values are configurable from **Workspace → Tools → Web Search → ⚙️**.
 
