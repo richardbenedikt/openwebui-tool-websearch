@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-05-15
+### Changed
+- **Breaking:** the tool now queries DuckDuckGo directly via HTTPS (`https://html.duckduckgo.com/html/`) using `httpx`, replacing the previous adapter over Open WebUI's `tools.builtin` `search_web` / `fetch_url`. The tool no longer requires Open WebUI to have a search engine configured under Admin → Settings.
+- `web_search` now emits a single bundled citation event per call, with one document/metadata entry per result. Open WebUI renders this as one search chip whose sub-sources are the individual URLs, rather than collapsing many per-URL events into a generic tool chip. `fetch_url` still emits its own citation with the full page body.
+
+### Added
+- `safe_search` valve (`strict` / `moderate` / `off`, default `moderate`) — maps to DuckDuckGo's `kp` query parameter.
+- `min_request_interval_ms` valve (default `2000`) — minimum gap between outbound requests; protects against DDG rate-limits and captcha-blocks.
+- Rotating realistic User-Agent pool and full `Sec-Fetch-*` / `Referer` / `Accept-Language` headers so requests look like a real browser.
+- Anti-bot detection: a non-200 status or DDG-anomaly body returns clean empty results plus a clear "rate-limited" status warning instead of a parse error.
+
+### Removed
+- **Breaking:** `auto_fetch_enabled` and `auto_fetch_top` valves. The post-search auto-fetch pipeline is gone — `web_search` returns snippets only and the model calls `fetch_url` itself. Open WebUI silently ignores unknown keys on load, so existing saved configurations will not break.
+- **Breaking:** `content` and `fetch_error` fields on individual search results (followed from auto-fetch removal).
+
+### Dependencies
+- Added `httpx>=0.27,<1` as a runtime dependency. HTML parsing uses stdlib `html.parser` — no new parser dep.
+
 ## [2.3.0] - 2026-05-03
 ### Added
 - `debug_log_raw_on_parse_failure` valve (default `false`). When the search backend returns an unrecognized response shape, also emits a status event with a truncated repr (≤1000 chars) of the raw payload. Use this to diagnose parse failures from DuckDuckGo or other backends whose response shape `_normalize` does not recognize.

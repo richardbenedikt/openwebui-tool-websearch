@@ -4,23 +4,22 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
-A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets the model search the web and fetch pages **only when it actually needs to**. It is a thin adapter over OpenWebUI's built-in `search_web` / `fetch_url`, so it inherits whatever search engine you have already configured (DuckDuckGo, Brave, Google PSE, Tavily, …) — no extra API keys required.
+A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets the model search the web and fetch pages **only when it actually needs to**. It queries DuckDuckGo directly over HTTPS — no Open WebUI search backend configuration required, no API keys.
 
 ## Features
 
 - **Two-tool surface** the LLM understands: `web_search` (snippets) and `fetch_url` (full page text).
 - **Native function calling** — the model decides whether and how often to call. Multiple, refining searches per inference are supported and explicitly encouraged in the docstrings.
-- **Reuses your OpenWebUI search backend** — no duplicate engine config, no extra keys.
+- **Direct DuckDuckGo HTML scraping** — no API keys, no upstream search config required from your Open WebUI admin.
 - **Domain allow/block lists** applied to both search results and `fetch_url` targets.
-- **Auto-fetches every result page by default** in parallel after every search, so answers are based on real page bodies rather than short snippets — even if the model wouldn't have called `fetch_url` itself. Configurable to a top-N cap.
+- **Polite rate limiting** (2 s default between requests) and **rotating realistic User-Agents** to stay below DDG's anti-bot thresholds.
 - **Status events** for visible progress in the chat UI.
-- **Per-URL citations** — every fetched page is emitted as its own clickable source in the chat, not a single generic tool entry.
+- **Per-URL citations** — every `web_search` emits a single bundled citation event whose `document` / `metadata` arrays carry one entry per result, so all result URLs appear as sub-sources under one search chip. Each `fetch_url` call emits its own citation with the full page body.
 - **Single-file deployment** — copy `websearch.py` into Workspace → Tools.
 
 ## Requirements
 
-- Open WebUI **0.6.0** or newer (with built-in `search_web` and `fetch_url` available).
-- A search engine configured under **Admin → Settings → Web Search**.
+- Open WebUI **0.6.0** or newer. No admin search-engine configuration required.
 - Python **3.11+** for development.
 
 ## Installation
@@ -30,7 +29,6 @@ A small [Open WebUI](https://github.com/open-webui/open-webui) tool that lets th
 1. Open Open WebUI → **Workspace → Tools → +**.
 2. Paste the contents of [`websearch.py`](websearch.py) and save.
 3. Enable the tool on a model that supports **Native** function calling.
-4. Make sure **Web Search** is enabled in admin settings.
 
 ### Option B — Import from URL
 
@@ -43,10 +41,10 @@ In Workspace → Tools → Import, paste the raw URL of `websearch.py` from your
 | `result_count` | int (1–20) | `5` | Default number of results returned. The model may override per call (clamped to 1–20). |
 | `allow_domains` | csv string | `""` | If set, only results from these domains (or subdomains) survive the filter. Also enforced on `fetch_url`. |
 | `block_domains` | csv string | `""` | Drops results from these domains (or subdomains). Also enforced on `fetch_url`. |
-| `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. Disabling also disables auto-fetch. |
-| `auto_fetch_enabled` | bool | `true` | Master switch for the post-search auto-fetch step. When `false`, `web_search` returns snippets only, but the model can still call `fetch_url` itself. |
-| `auto_fetch_top` | int (0–20) | `0` | When `auto_fetch_enabled` is on, controls how many pages are pre-fetched per search. `0` (default) fetches every returned result; a positive `N` caps pre-fetching to the top `N` (capped at the number of returned results). |
-| `debug_log_raw_on_parse_failure` | bool | `false` | When the search backend returns a response shape the tool cannot parse, also emits a status event with a truncated repr (≤1000 chars) of the raw payload. Use this to diagnose unrecognized DuckDuckGo / backend response shapes. |
+| `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. |
+| `safe_search` | `strict` / `moderate` / `off` | `moderate` | DuckDuckGo SafeSearch level (maps to the `kp` query parameter). |
+| `min_request_interval_ms` | int (0–60000) | `2000` | Minimum milliseconds between outbound requests. Lower at your own risk — DuckDuckGo will rate-limit or captcha-block aggressive scrapers. |
+| `debug_log_raw_on_parse_failure` | bool | `false` | When the search response is non-empty but yields zero parsed results, emit a status event with a truncated repr (≤1000 chars) of the raw HTML. Use this to diagnose DuckDuckGo markup changes. |
 
 All values are configurable from **Workspace → Tools → Web Search → ⚙️**.
 
@@ -64,12 +62,12 @@ This means: trivia, math, and well-known facts won't trigger a search; questions
 Both methods return a JSON-encoded string with a stable shape:
 
 ```json
-{"results": [{"title": "...", "link": "...", "snippet": "...", "content": "full page text"}], "hint": "..."}
+{"results": [{"title": "...", "link": "...", "snippet": "..."}], "hint": "..."}
 {"url": "https://...", "content": "page text"}
 {"error": "human-readable reason"}
 ```
 
-`content` is present on every returned result by default (`auto_fetch_top=0`) when both `enable_fetch_url` and `auto_fetch_enabled` are on; set a positive `N` to cap pre-fetching to the top `N`, or set `auto_fetch_enabled=false` to skip pre-fetching entirely while keeping `fetch_url` available to the model. On a fetch failure the entry gets `"fetch_error": "..."` instead. The `hint` is always present on empty results (instructs the model to retry with a broader query) and on results when `enable_fetch_url` is on; it is omitted only on results when `enable_fetch_url` is off.
+`web_search` returns only snippets — the model is expected to call `fetch_url` for any non-trivial answer. The `hint` is present on empty results (telling the model to retry with a broader query) and on non-empty results when `enable_fetch_url` is on (telling the model to read pages before answering). It is omitted on results when `enable_fetch_url` is off.
 
 ## Development
 
@@ -85,14 +83,14 @@ black --check .
 pytest -q
 ```
 
-Tests stub out the OpenWebUI built-ins, so they run anywhere — no Open WebUI install required.
+Tests mount an `httpx.MockTransport` on the tool instead of hitting the network, so they run anywhere — no Open WebUI install required.
 
 ## Limitations
 
-- Honors whatever search engine your OpenWebUI admin selected. If results are poor, fix it in Open WebUI's settings, not here.
+- Uses DuckDuckGo's public HTML endpoint. DDG may rate-limit or captcha-block aggressive use; the tool defaults to 2 s between requests for this reason. If you see "DuckDuckGo declined the request" warnings in chat, raise `min_request_interval_ms`.
 - `fetch_url` does not execute JavaScript; pages that render entirely client-side will return little useful text.
-- Page bodies are truncated by Open WebUI's `WEB_FETCH_MAX_CONTENT_LENGTH`.
-- Couples to Open WebUI's internal `tools.builtin` module. If a future Open WebUI release moves it, the tool will fail with a clear `RuntimeError` and bump the minimum version requirement.
+- Page bodies are truncated to 20 000 characters.
+- DDG HTML markup can change. The `debug_log_raw_on_parse_failure` valve exists to surface unrecognized response shapes for diagnosis.
 
 ## Contributing
 
