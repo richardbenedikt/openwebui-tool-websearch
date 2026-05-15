@@ -10,17 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `web_search` now emits a single bundled citation event per call, with one document/metadata entry per result. Open WebUI renders this as one search chip whose sub-sources are the individual URLs, rather than collapsing many per-URL events into a generic tool chip. `fetch_url` still emits its own citation with the full page body.
 
 ### Added
-- `safe_search` valve (`strict` / `moderate` / `off`, default `moderate`) — maps to DuckDuckGo's `kp` query parameter.
-- `min_request_interval_ms` valve (default `2000`) — minimum gap between outbound requests; protects against DDG rate-limits and captcha-blocks.
+- `safe_search` valve (`strict` / `moderate` / `off`, default `moderate`) - maps to DuckDuckGo's `kp` query parameter.
+- `min_request_interval_ms` valve (default `2000`) - minimum gap between outbound requests; protects against DDG rate-limits and captcha-blocks.
 - Rotating realistic User-Agent pool and full `Sec-Fetch-*` / `Referer` / `Accept-Language` headers so requests look like a real browser.
 - Anti-bot detection: a non-200 status or DDG-anomaly body returns clean empty results plus a clear "rate-limited" status warning instead of a parse error.
 
 ### Removed
-- **Breaking:** `auto_fetch_enabled` and `auto_fetch_top` valves. The post-search auto-fetch pipeline is gone — `web_search` returns snippets only and the model calls `fetch_url` itself. Open WebUI silently ignores unknown keys on load, so existing saved configurations will not break.
+- **Breaking:** `auto_fetch_enabled` and `auto_fetch_top` valves. The post-search auto-fetch pipeline is gone - `web_search` returns snippets only and the model calls `fetch_url` itself. Open WebUI silently ignores unknown keys on load, so existing saved configurations will not break.
 - **Breaking:** `content` and `fetch_error` fields on individual search results (followed from auto-fetch removal).
 
 ### Dependencies
-- Added `httpx>=0.27,<1` as a runtime dependency. HTML parsing uses stdlib `html.parser` — no new parser dep.
+- Added `httpx>=0.27,<1` as a runtime dependency. HTML parsing uses stdlib `html.parser` - no new parser dep.
 
 ## [2.3.0] - 2026-05-03
 ### Added
@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-04-25
 ### Added
-- `auto_fetch_top` valve (default `2`, range 0–5). After every `web_search`, fetches the top N pages in parallel and embeds their text as a `content` field on each result. Pages that fail to fetch get a `fetch_error` field instead. This bypasses models that ignore `fetch_url` even when prompted, so answers are based on real page bodies.
+- `auto_fetch_top` valve (default `2`, range 0-5). After every `web_search`, fetches the top N pages in parallel and embeds their text as a `content` field on each result. Pages that fail to fetch get a `fetch_error` field instead. This bypasses models that ignore `fetch_url` even when prompted, so answers are based on real page bodies.
 ### Changed
 - Removed the `language` valve; the `lang:<code>` query suffix was non-standard and broke results on most engines. Engine-side language config should be used instead.
 - `web_search` and `fetch_url` docstrings strengthened to push the model to read pages instead of stopping at snippets.
