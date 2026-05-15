@@ -38,12 +38,12 @@ In Workspace → Tools → Import, paste the raw URL of `websearch.py` from your
 
 | Valve | Type | Default | Effect |
 |---|---|---|---|
-| `result_count` | int (1–20) | `5` | Default number of results returned. The model may override per call (clamped to 1–20). |
+| `result_count` | int (1-20) | `5` | Default number of results returned. The model may override per call (clamped to 1-20). |
 | `allow_domains` | csv string | `""` | If set, only results from these domains (or subdomains) survive the filter. Also enforced on `fetch_url`. |
 | `block_domains` | csv string | `""` | Drops results from these domains (or subdomains). Also enforced on `fetch_url`. |
 | `enable_fetch_url` | bool | `true` | Master kill switch for the `fetch_url` method. |
 | `safe_search` | `strict` / `moderate` / `off` | `moderate` | DuckDuckGo SafeSearch level (maps to the `kp` query parameter). |
-| `min_request_interval_ms` | int (0–60000) | `2000` | Minimum milliseconds between outbound requests. Lower at your own risk - DuckDuckGo will rate-limit or captcha-block aggressive scrapers. |
+| `min_request_interval_ms` | int (0-60000) | `2000` | Minimum milliseconds between outbound requests. Lower at your own risk - DuckDuckGo will rate-limit or captcha-block aggressive scrapers. |
 | `debug_log_raw_on_parse_failure` | bool | `false` | When the search response is non-empty but yields zero parsed results, emit a status event with a truncated repr (≤1000 chars) of the raw HTML. Use this to diagnose DuckDuckGo markup changes. |
 
 All values are configurable from **Workspace → Tools → Web Search → ⚙️**.
