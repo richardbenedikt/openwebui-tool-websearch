@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and PRs welcome. Keep changes scoped — this is a single-file tool.
+Issues and PRs welcome. Keep changes scoped - this is a single-file tool.
 
 ## Dev setup
 
@@ -24,5 +24,5 @@ The same three commands run in CI on Python 3.11 and 3.12.
 
 - PEP 8, line length 120. Ruff and Black are the source of truth.
 - Type hints on public symbols.
-- `websearch.py` must stay self-contained — Open WebUI loads it as a single uploaded blob, so sibling modules are not importable at runtime.
+- `websearch.py` must stay self-contained. Open WebUI loads it as a single uploaded blob, so sibling modules are not importable at runtime.
 - Bump `version:` in the `websearch.py` frontmatter (and `pyproject.toml`) when behavior changes.
